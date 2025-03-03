@@ -1,7 +1,15 @@
-
-
-FROM mysql:latest
+FROM maven:3.9.9-eclipse-temurin-17
  
-ENV MYSQL_ROOT_PASSWORD=root
+WORKDIR /app
  
-COPY  ./db_ktx.sql /docker-entrypoint-initdb.d
+COPY . /app
+ 
+# COPY Libs/jxcell.jar /app/Libs/jxcell.jar
+# COPY Libs/score-lib.jar /app/Libs/score-lib.jar
+ 
+RUN mvn install:install-file -Dfile=/app/Libs/jxcell.jar -DgroupId=com.jxcell -DartifactId=jxcell -Dversion=4.0.31 -Dpackaging=jar && \
+    mvn install:install-file -Dfile=/app/Libs/score-lib.jar -DgroupId=sCore -DartifactId=score-lib -Dversion=1.5 -Dpackaging=jar
+ 
+RUN mvn clean package
+ 
+CMD ["java", "-jar", "base-service/target/ktx-service.jar"]

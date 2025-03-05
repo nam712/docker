@@ -1,0 +1,32 @@
+First you need to find out where is your Bash interpreter located. Enter the following into your command line
+$ which bash
+/bin/bash
+
+The next thing you need to do is open our favorite text editor and create a file called hello_world.sh. We will use nano for this step.
+$ nano hello_world.sh
+
+Copy and paste the following lines into the new file and save it:
+#!/bin/bash
+# declare STRING variable
+STRING="Hello World"
+# print variable on a screen
+echo $STRING
+
+Navigate to the directory where your hello_world.sh bash script is located and make the file executable:
+$ chmod +x hello_world.sh 
+
+Now you are ready to execute your first bash script:
+$ ./hello_world.sh 
+
+
+docker exec -it 4486435512ad mysql -u root -p 
+use db_ktx
+show tables;
+select * from student;
+
+ echo "root" | docker secret create db_username -
+echo "root" | docker secret create db_password - 
+
+docker stack deploy -c docker-compose.yml quan-ly-ktx
+
+docker swarm leave --force

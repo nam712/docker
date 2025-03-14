@@ -1,0 +1,81 @@
+pipeline {
+    agent any
+
+    environment {
+        COMPOSE_FILE = "docker-compose.yml"
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/nam712/ktx-main.git'
+            }
+        }
+        stage('Build') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh 'docker-compose build'
+                    } else {
+                        bat 'docker-compose build'
+                    }
+                }
+            }
+        }
+        stage('Deploy') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh 'docker-compose up -d'
+                    } else {
+                        bat 'docker-compose up -d'
+                    }
+                }
+            }
+        }
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh 'docker-compose ps'
+                    } else {
+                        bat 'docker-compose ps'
+                    }
+                }
+            }
+        }
+        stage('Test') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh 'docker-compose exec ktx-be ./run_tests.sh'
+                    } else {
+                        bat 'docker-compose exec ktx-be ./run_tests.sh'
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                echo 'Pipeline succeeded!'
+            }
+        }
+        failure {
+            script {
+                echo 'Pipeline failed!'
+            }
+        }
+        always {
+            script {
+                if (isUnix()) {
+                    sh 'docker-compose down'
+                } else {
+                    bat 'docker-compose down'
+                }
+            }
+        }
+    }
+}

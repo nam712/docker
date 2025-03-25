@@ -1,15 +1,14 @@
-FROM maven:3.9.9-eclipse-temurin-17
- 
+FROM node:18-alpine AS build
 WORKDIR /app
- 
-COPY . /app
- 
-# COPY Libs/jxcell.jar /app/Libs/jxcell.jar
-# COPY Libs/score-lib.jar /app/Libs/score-lib.jar
- 
-RUN mvn install:install-file -Dfile=/app/Libs/jxcell.jar -DgroupId=com.jxcell -DartifactId=jxcell -Dversion=4.0.31 -Dpackaging=jar && \
-    mvn install:install-file -Dfile=/app/Libs/score-lib.jar -DgroupId=sCore -DartifactId=score-lib -Dversion=1.5 -Dpackaging=jar
- 
-RUN mvn clean package
- 
-CMD ["java", "-jar", "base-service/target/ktx-service.jar"]
+COPY *.json ./
+COPY src/ ./src/
+RUN npm install
+RUN npm install -g @angular/cli
+RUN ng build --configuration=production
+
+FROM nginx:alpine
+COPY --from=build /app/dist/ktx-app /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY mime.types /etc/nginx/mime.types
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

@@ -3,70 +3,53 @@ stages:
   - deploy
 
 variables:
-  VERSION_FILE: version.txt
-  IMAGE_VERSION: "1"  # Giá trị mặc định nếu chưa có file version.txt
-  IMAGE_TAG: $CI_REGISTRY_IMAGE:v$IMAGE_VERSION
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
 
-before_script:
-  - echo "Checking version..."
-  - |
-    if [ -f "$VERSION_FILE" ]; then
-      IMAGE_VERSION=$(($(cat $VERSION_FILE) + 1))
-    fi
-  - echo $IMAGE_VERSION > $VERSION_FILE
-  - echo "New Version: v$IMAGE_VERSION"
-  - git config --global user.email "ci@gitlab.com"
-  - git config --global user.name "GitLab CI"
-  - git add $VERSION_FILE
-  - git commit -m "Update version to v$IMAGE_VERSION" || true
-  - git push || true
-
-# -------- Build & push image cho DB --------
+# Job build và deploy cho DB
 build-deploy-db:
   stage: build
   image: docker:latest
   services:
     - docker:dind
+  before_script:
+    - echo "Đang build image cho DB..."
   script:
     - cd db
-    - echo "Đang build image cho DB..."
     - docker build -t $IMAGE_TAG .
+    # Push image lên GitLab Container Registry (nếu sử dụng)
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker push $IMAGE_TAG
   rules:
     - changes:
         - db/**/*
 
-# -------- Deploy DB lên EC2 --------
 deploy-db:
   stage: deploy
   image: alpine:latest
   before_script:
     - apk add --no-cache openssh-client
     - mkdir -p ~/.ssh
+    # Sử dụng biến môi trường SSH_KEY_DB chứa private key của máy EC2 db
     - echo "$SSH_KEY_DB" | tr -d '\r' > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
   script:
-    - echo "Deploying DB..."
-    - ssh -o StrictHostKeyChecking=no ec2-user@<DB_EC2_IP> "
-        docker stop db_container || true && 
-        docker rm db_container || true && 
-        docker rmi -f \$(docker images -q) || true &&  # Xóa toàn bộ image cũ
-        docker pull $IMAGE_TAG &&
-        docker run -d --name db_container $IMAGE_TAG"
+    - echo "Triển khai DB lên máy EC2..."
+    # Lệnh deploy: ví dụ, pull image mới và chạy container
+    - ssh -o StrictHostKeyChecking=no ec2-user@<DB_EC2_IP> "docker pull $IMAGE_TAG && docker stop db_container || true && docker rm db_container || true && docker rmi \$(docker images -q --filter reference='$CI_REGISTRY_IMAGE') || true && docker run -d --name db_container $IMAGE_TAG"
   rules:
     - changes:
         - db/**/*
 
-# -------- Build & push image cho Backend --------
+# Job build và deploy cho Backend
 build-deploy-be:
   stage: build
   image: docker:latest
   services:
     - docker:dind
+  before_script:
+    - echo "Đang build image cho Backend..."
   script:
     - cd be
-    - echo "Đang build image cho Backend..."
     - docker build -t $IMAGE_TAG .
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker push $IMAGE_TAG
@@ -74,7 +57,6 @@ build-deploy-be:
     - changes:
         - be/**/*
 
-# -------- Deploy Backend lên EC2 --------
 deploy-be:
   stage: deploy
   image: alpine:latest
@@ -84,26 +66,22 @@ deploy-be:
     - echo "$SSH_KEY_BE" | tr -d '\r' > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
   script:
-    - echo "Deploying Backend..."
-    - ssh -o StrictHostKeyChecking=no ec2-user@<BE_EC2_IP> "
-        docker stop be_container || true && 
-        docker rm be_container || true && 
-        docker rmi -f \$(docker images -q) || true &&  # Xóa toàn bộ image cũ
-        docker pull $IMAGE_TAG &&
-        docker run -d --name be_container -p 8080:8080 $IMAGE_TAG"
+    - echo "Triển khai Backend lên máy EC2..."
+    - ssh -o StrictHostKeyChecking=no ec2-user@<BE_EC2_IP> "docker pull $IMAGE_TAG && docker stop be_container || true && docker rm be_container || true && docker rmi \$(docker images -q --filter reference='$CI_REGISTRY_IMAGE') || true && docker run -d --name be_container -p 8080:8080 $IMAGE_TAG"
   rules:
     - changes:
         - be/**/*
 
-# -------- Build & push image cho Frontend --------
+# Job build và deploy cho Frontend
 build-deploy-fe:
   stage: build
   image: docker:latest
   services:
     - docker:dind
+  before_script:
+    - echo "Đang build image cho Frontend..."
   script:
     - cd fe
-    - echo "Đang build image cho Frontend..."
     - docker build -t $IMAGE_TAG .
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker push $IMAGE_TAG
@@ -111,7 +89,6 @@ build-deploy-fe:
     - changes:
         - fe/**/*
 
-# -------- Deploy Frontend lên EC2 --------
 deploy-fe:
   stage: deploy
   image: alpine:latest
@@ -121,13 +98,8 @@ deploy-fe:
     - echo "$SSH_KEY_FE" | tr -d '\r' > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
   script:
-    - echo "Deploying Frontend..."
-    - ssh -o StrictHostKeyChecking=no ec2-user@<FE_EC2_IP> "
-        docker stop fe_container || true && 
-        docker rm fe_container || true && 
-        docker rmi -f \$(docker images -q) || true &&  # Xóa toàn bộ image cũ
-        docker pull $IMAGE_TAG &&
-        docker run -d --name fe_container -p 80:80 $IMAGE_TAG"
+    - echo "Triển khai Frontend lên máy EC2..."
+    - ssh -o StrictHostKeyChecking=no ec2-user@<FE_EC2_IP> "docker pull $IMAGE_TAG && docker stop fe_container || true && docker rm fe_container || true && docker rmi \$(docker images -q --filter reference='$CI_REGISTRY_IMAGE') || true && docker run -d --name fe_container -p 80:80 $IMAGE_TAG"
   rules:
     - changes:
         - fe/**/*

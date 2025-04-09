@@ -3,7 +3,8 @@ stages:
   - deploy
 
 variables:
-  IMAGE_TAG: ada456/ktx-db:$CI_COMMIT_SHORT_SHA
+  IMAGE_DB: ada456/ktx-db:$CI_COMMIT_SHORT_SHA
+  IMAGE_BE: ada456/ktx-be:$CI_COMMIT_SHORT_SHA
   DOCKER_HOST: tcp://13.229.223.234:2375/
   DOCKER_TLS_CERTDIR: ""
   DOCKERHUB_USERNAME: "ada456"
@@ -17,9 +18,9 @@ build-db:
     - echo "Đang build image cho DB..."
   script:
     - cd db
-    - docker build -t $IMAGE_TAG .
+    - docker build -t $IMAGE_DB .
     - echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
-    - docker push $IMAGE_TAG
+    - docker push $IMAGE_DB
   tags:
     - db
 
@@ -33,6 +34,35 @@ deploy-db:
     - chmod 600 ~/.ssh/id_rsa
   script:
     - echo "Triển khai DB lên máy EC2..."
-    - ssh -o StrictHostKeyChecking=no ec2-user@172.31.28.88 "docker pull $IMAGE_TAG && docker stop db_container || true && docker rm db_container || true && docker rmi \$(docker images -q --filter reference='ada456/ktx-db') || true && docker run -d --name db_container $IMAGE_TAG"
+    - ssh -o StrictHostKeyChecking=no ec2-user@172.31.28.88 "docker pull $IMAGE_TAG && docker stop db_container || true && docker rm db_container || true && docker rmi \$(docker images -q --filter reference='ada456/ktx-db') || true && docker run -d --name db_container -p 3306:3306 $IMAGE_TAG"
+  tags:
+    - db
+
+build-be:
+  image: docker:latest
+  stage: build
+  services:
+    - docker:dind
+  before_script:
+    - echo "Đang build image cho BE..."
+  script:
+    - cd ktx-be
+    - docker build -t $IMAGE_BE .
+    - echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
+    - docker push $IMAGE_BE
+  tags:
+    - db
+
+deploy-be:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - echo "$SSH_KEY_BE" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+  script:
+    - echo "Triển khai BE lên máy EC2..."
+    - ssh -o StrictHostKeyChecking=no ec2-user@172.31.25.127 "docker pull $IMAGE_BE && docker stop be_container || true && docker rm be_container || true && docker rmi \$(docker images -q --filter reference='ada456/ktx-be') || true && docker run -d --name be_container -p 8888:8888 $IMAGE_BE"
   tags:
     - db

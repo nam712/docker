@@ -1,0 +1,38 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  IMAGE_TAG: ada456/ktx-db:$CI_COMMIT_SHORT_SHA
+  DOCKER_HOST: tcp://13.229.223.234:2375/
+  DOCKER_TLS_CERTDIR: ""
+  DOCKERHUB_USERNAME: "ada456"
+
+build-db:
+  image: docker:latest
+  stage: build
+  services:
+    - docker:dind
+  before_script:
+    - echo "Đang build image cho DB..."
+  script:
+    - cd db
+    - docker build -t $IMAGE_TAG .
+    - echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
+    - docker push $IMAGE_TAG
+  tags:
+    - db
+
+deploy-db:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - echo "$SSH_KEY_DB" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+  script:
+    - echo "Triển khai DB lên máy EC2..."
+    - ssh -o StrictHostKeyChecking=no ec2-user@172.31.28.88 "docker pull $IMAGE_TAG && docker stop db_container || true && docker rm db_container || true && docker rmi \$(docker images -q --filter reference='ada456/ktx-db') || true && docker run -d --name db_container $IMAGE_TAG"
+  tags:
+    - db

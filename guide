@@ -1,225 +1,52 @@
-1. Chuẩn bị môi trường
-a. EC2 Instance cho từng thành phần
-Tạo 3 máy EC2: Một cho DB, một cho Backend (BE) và một cho Frontend (FE).
-
-Cài đặt Docker:
-Trên mỗi máy EC2, cài đặt Docker. Ví dụ trên Ubuntu:
-
-bash
-Sao chép
-Chỉnh sửa
-sudo apt-get update
-sudo apt-get install -y docker.io
+sudo yum update -y 
+sudo yum install docker -y
+sudo service docker start
+sudo usermod -a -G docker ec2-user
 sudo systemctl enable docker
 sudo systemctl start docker
-Cài đặt Docker Compose (nếu cần): Nếu bạn cần chạy nhiều container liên quan (ví dụ: chạy DB container với các thông số cấu hình phức tạp) thì có thể cài đặt Docker Compose.
-
-b. Chuẩn bị GitLab Runner
-Bạn có thể lựa chọn:
-
-Shared Runners của GitLab: Nếu bạn dùng shared runners thì phải cấu hình kết nối SSH tới các máy EC2 để triển khai.
-
-Cài đặt GitLab Runner riêng trên mỗi EC2: Mỗi runner có thể cấu hình tag riêng, sau đó trong .gitlab-ci.yml bạn chỉ định chạy job trên runner có tag tương ứng (ví dụ: tag “db”, “be”, “fe”).
-
-2. Cấu trúc repository và Dockerfile
-Giả sử cấu trúc dự án như sau:
-
-css
-Sao chép
-Chỉnh sửa
-project-root/
-├── db/
-│   ├── Dockerfile
-│   └── ... (code cấu hình db)
-├── be/
-│   ├── Dockerfile
-│   └── ... (code backend)
-└── fe/
-    ├── Dockerfile
-    └── ... (code frontend)
-Dockerfile: Mỗi thư mục đều có Dockerfile riêng để build image tương ứng.
-
-3. Cấu hình GitLab CI/CD
-Tạo file .gitlab-ci.yml ở gốc dự án. Ý tưởng chính là:
-
-Tạo 3 job: build-deploy-db, build-deploy-be, build-deploy-fe.
-
-Sử dụng điều kiện rules/changes để job chỉ chạy khi có thay đổi trong thư mục tương ứng.
-
-Trong mỗi job:
-
-Build Docker image cho thành phần đó.
-
-Đẩy image lên registry (GitLab Container Registry hoặc Docker Hub) nếu cần.
-
-Triển khai lên máy EC2 thông qua SSH (hoặc dùng GitLab Runner cài đặt trực tiếp trên EC2).
-
-a. Cấu hình “rules: changes”
-Ví dụ, job cho backend chỉ chạy khi có thay đổi trong thư mục be/:
-
-yaml
-Sao chép
-Chỉnh sửa
-rules:
-  - changes:
-      - be/**/* 
-Tương tự cho db và fe.
+sudo systemctl daemon-reload
+sudo docker reboot
+sudo systemctl status docker
 
 
-🚀 Bước 1: Cài đặt GitLab Runner trên mỗi EC2
-Thực hiện trên từng máy EC2 (DB, BE, FE).
+curl -LJO "https://gitlab-runner-downloads.s3.amazonaws.com/latest/rpm/gitlab-runner-helper-images.rpm"
+sudo rpm -i gitlab-runner-helper-images.rpm
 
-🔹 1.1. Cập nhật hệ thống & cài đặt GitLab Runner
-bash
-Sao chép
-Chỉnh sửa
-sudo apt-get update -y
-sudo apt-get install -y curl git unzip
-curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | sudo bash
-sudo apt-get install -y gitlab-runner
-🔹 1.2. Kiểm tra phiên bản
-bash
-Sao chép
-Chỉnh sửa
-gitlab-runner --version
-💡 Kết quả mong đợi: Xuất hiện phiên bản của GitLab Runner.
+curl -LJO "https://gitlab-runner-downloads.s3.amazonaws.com/latest/rpm/gitlab-runner_amd64.rpm"
 
-🚀 Bước 2: Đăng ký GitLab Runner với GitLab
-Bạn cần lấy URL & Token từ GitLab:
+sudo rpm -i gitlab-runner_amd64.rpm
 
-Vào GitLab → Project của bạn.
 
-Settings → CI/CD → Runners → Expand.
-
-Lấy URL & Registration Token.
-
-💡 Chạy lệnh sau để đăng ký runner trên từng EC2:
-
-bash
-Sao chép
-Chỉnh sửa
 sudo gitlab-runner register
-Nhập các thông tin:
 
-GitLab URL: (Ví dụ) https://gitlab.com/
+ sudo gitlab-runner status
 
-Token: (Dán token từ GitLab)
+docker 
+alpine
 
-Mô tả Runner: Nhập EC2-DB, EC2-BE, EC2-FE
+sudo vim /etc/gitlab-runner/config.toml
 
-Tags: Nhập db, be, fe tương ứng với từng EC2
+sudo nano /etc/docker/daemon.json
 
-Executor: Chọn docker
+{
+  "hosts": ["tcp://0.0.0.0:2375", "unix:///var/run/docker.sock"]
+}
 
-💡 Kiểm tra lại danh sách runner
 
-bash
-Sao chép
-Chỉnh sửa
-sudo gitlab-runner list
-✔ Nếu thấy EC2-DB, EC2-BE, EC2-FE xuất hiện là OK.
-
-🚀 Bước 3: Cấu hình Runner để sử dụng Docker
-Chỉnh sửa file /etc/gitlab-runner/config.toml
-
-bash
-Sao chép
-Chỉnh sửa
-sudo nano /etc/gitlab-runner/config.toml
-Thêm hoặc cập nhật cấu hình:
-
-toml
-Sao chép
-Chỉnh sửa
-[[runners]]
-  name = "EC2-BE"
-  url = "https://gitlab.com/"
-  token = "YOUR_RUNNER_TOKEN"
-  executor = "docker"
-  [runners.custom_build_dir]
-  [runners.docker]
-    tls_verify = false
-    image = "docker:latest"
-    privileged = true
-    disable_entrypoint_overwrite = false
-    oom_kill_disable = false
-    disable_cache = false
-    volumes = ["/cache"]
-  [runners.cache]
-💾 Lưu lại và thoát (CTRL + X → Y → ENTER).
-
-Khởi động lại Runner:
-
-bash
-Sao chép
-Chỉnh sửa
-sudo gitlab-runner restart
-🚀 Bước 4: Kiểm tra Runner trên GitLab
-Vào GitLab → Settings → CI/CD → Runners
-✔ Nếu thấy EC2-DB, EC2-BE, EC2-FE đang hoạt động là OK.
-
-🚀 Bước 5: Cập nhật .gitlab-ci.yml để sử dụng đúng Runner
-Trong file .gitlab-ci.yml, sửa các job để dùng đúng runner:
-
-yaml
-Sao chép
-Chỉnh sửa
-build-deploy-db:
-  stage: build
-  tags:
-    - db
-  script:
-    - echo "Đang build image cho DB..."
-    - docker build -t myrepo/db:$CI_COMMIT_REF_NAME .
-    - docker push myrepo/db:$CI_COMMIT_REF_NAME
-Tương tự cho BE và FE:
-
-yaml
-Sao chép
-Chỉnh sửa
-build-deploy-be:
-  stage: build
-  tags:
-    - be
-  script:
-    - echo "Đang build image cho Backend..."
-    - docker build -t myrepo/be:$CI_COMMIT_REF_NAME .
-    - docker push myrepo/be:$CI_COMMIT_REF_NAME
-
-build-deploy-fe:
-  stage: build
-  tags:
-    - fe
-  script:
-    - echo "Đang build image cho Frontend..."
-    - docker build -t myrepo/fe:$CI_COMMIT_REF_NAME .
-    - docker push myrepo/fe:$CI_COMMIT_REF_NAME
-🚀 Tổng kết
-✅ Cài đặt GitLab Runner trên từng EC2.
-✅ Đăng ký với GitLab, cấu hình chạy Docker.
-✅ Sử dụng tags (db, be, fe) để chỉ định job chạy đúng runner.
-
-➡ Từ bây giờ, mỗi lần push code lên GitLab, runner trên EC2 sẽ tự động build & deploy! 🚀
+sudo mkdir -p /etc/systemd/system/docker.service.d
+sudo bash -c 'echo -e "[Service]\nExecStart=\nExecStart=/usr/bin/dockerd" > /etc/systemd/system/docker.service.d/override.conf'
+sudo systemctl daemon-reload
+sudo systemctl restart docker
 
 
 
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 
+sudo chmod +x /usr/local/bin/docker-compose
 
+docker context create remote --docker "host=ssh://ec2-user@47.128.253.215"
 
+docker-compose --context remote up -d
 
-Bạn đã nói:
-đang thao tác trong ec2 hay là web
-
-
-ChatGPT đã nói:
-Bạn sẽ thực hiện cả hai:
-
-1️⃣ Trên EC2: Cài đặt và cấu hình GitLab Runner bằng terminal (SSH).
-2️⃣ Trên GitLab Web: Lấy GitLab URL & Token trong CI/CD Settings.
-3️⃣ Trên EC2: Đăng ký runner với GitLab và chỉnh sửa .gitlab-ci.yml.
-
-Cụ thể:
-
-Nếu bạn đang thao tác trên EC2, hãy mở terminal SSH và chạy các lệnh hướng dẫn.
-
-Nếu bạn cần lấy token, hãy mở GitLab Web → Settings → CI/CD → Runners.
+sudo yum install -y httpd
+systemctl status httpd

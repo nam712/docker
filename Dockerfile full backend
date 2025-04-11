@@ -1,0 +1,27 @@
+# Use Maven image for the build stage
+FROM maven:3.8.1-openjdk-17-slim as build
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the pom.xml file and other necessary files
+COPY pom.xml .
+COPY . .
+
+# Install the required JAR files and build the project
+RUN mvn install:install-file -Dfile=/app/Libs/jxcell.jar -DgroupId=com.jxcell -DartifactId=jxcell -Dversion=4.0.31 -Dpackaging=jar && \
+    mvn install:install-file -Dfile=/app/Libs/score-lib.jar -DgroupId=sCore -DartifactId=score-lib -Dversion=1.5 -Dpackaging=jar && \
+    mvn clean package
+
+# Use a lightweight JDK image for the runtime stage
+FROM eclipse-temurin:17-jdk-alpine
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the built JAR file from the build stage
+COPY --from=build /app/base-service/target/ktx-service.jar .
+
+# Define the command to run the application
+CMD ["java", "-jar", "ktx-service.jar"]
+

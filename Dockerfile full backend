@@ -24,4 +24,5 @@ COPY --from=build /app/base-service/target/ktx-service.jar .
 
 # Define the command to run the application
 CMD ["java", "-jar", "ktx-service.jar"]
-
+#xoá tất cả images ko có tag
+docker rmi $(docker images -f "dangling=true" -q)
